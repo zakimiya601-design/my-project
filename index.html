@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>やる事リスト</title>
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --card: #ffffff;
+    --text: #1f1f1d;
+    --sub: #8a8a84;
+    --line: #e6e6e1;
+    --accent: #2f6f4f;
+    --danger: #b3412f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615;
+      --card: #222220;
+      --text: #ededea;
+      --sub: #8f8f88;
+      --line: #33332f;
+      --accent: #6cbf93;
+      --danger: #e07a68;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 32px 16px 48px;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 4px;
+    letter-spacing: 0.02em;
+  }
+  .count {
+    color: var(--sub);
+    font-size: 14px;
+    margin: 0 0 20px;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  input[type="text"] {
+    flex: 1;
+    font-size: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+  .add {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    padding: 0 18px;
+    border-radius: 12px;
+  }
+  .filters {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .filters button {
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    color: var(--sub);
+  }
+  .filters button.on {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--card);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  li:last-child { border-bottom: none; }
+  .check {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    display: grid;
+    place-items: center;
+  }
+  li.done .check {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  li.done .check::after {
+    content: "";
+    width: 6px;
+    height: 11px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+  .text {
+    flex: 1;
+    font-size: 16px;
+    word-break: break-word;
+  }
+  li.done .text {
+    color: var(--sub);
+    text-decoration: line-through;
+  }
+  .del {
+    color: var(--sub);
+    font-size: 20px;
+    line-height: 1;
+    padding: 4px 6px;
+  }
+  .del:hover { color: var(--danger); }
+  .empty {
+    text-align: center;
+    color: var(--sub);
+    padding: 40px 0;
+    font-size: 15px;
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+  .clear {
+    font-size: 14px;
+    color: var(--sub);
+    padding: 6px 4px;
+  }
+  .clear:hover { color: var(--danger); }
+</style>
+</head>
+<body>
+<main>
+  <h1>やる事リスト</h1>
+  <p class="count" id="count"></p>
+
+  <form id="form">
+    <input type="text" id="input" placeholder="やる事を入力" autocomplete="off" maxlength="200">
+    <button type="submit" class="add">追加</button>
+  </form>
+
+  <div class="filters" id="filters">
+    <button data-filter="all" class="on">すべて</button>
+    <button data-filter="active">未完了</button>
+    <button data-filter="done">完了</button>
+  </div>
+
+  <ul id="list"></ul>
+  <p class="empty" id="empty" hidden></p>
+
+  <div class="footer">
+    <button class="clear" id="clear" hidden>完了したものを削除</button>
+  </div>
+</main>
+
+<script>
+  const STORAGE_KEY = "todo-items";
+  let todos = load();
+  let filter = "all";
+
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const list = document.getElementById("list");
+  const empty = document.getElementById("empty");
+  const count = document.getElementById("count");
+  const clearBtn = document.getElementById("clear");
+  const filters = document.getElementById("filters");
+
+  // 保存されたリストを読み込む（読めなければ空のリストから始める）
+  function load() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // リストを保存する（保存できない環境では何もしない）
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+    } catch (e) {}
+  }
+
+  function render() {
+    const shown = todos.filter(t =>
+      filter === "all" ? true : filter === "done" ? t.done : !t.done
+    );
+
+    list.innerHTML = "";
+    for (const t of shown) {
+      const li = document.createElement("li");
+      if (t.done) li.classList.add("done");
+
+      const check = document.createElement("button");
+      check.className = "check";
+      check.setAttribute("aria-label", t.done ? "未完了に戻す" : "完了にする");
+      check.onclick = () => { t.done = !t.done; save(); render(); };
+
+      const text = document.createElement("span");
+      text.className = "text";
+      text.textContent = t.text;
+
+      const del = document.createElement("button");
+      del.className = "del";
+      del.textContent = "×";
+      del.setAttribute("aria-label", "削除");
+      del.onclick = () => { todos = todos.filter(x => x.id !== t.id); save(); render(); };
+
+      li.append(check, text, del);
+      list.appendChild(li);
+    }
+
+    list.hidden = shown.length === 0;
+    empty.hidden = shown.length > 0;
+    empty.textContent =
+      todos.length === 0 ? "まだ何もありません。上から追加してください。" :
+      filter === "done" ? "完了したものはまだありません。" :
+      "未完了のものはありません。";
+
+    const left = todos.filter(t => !t.done).length;
+    count.textContent = todos.length === 0 ? "" : `残り ${left} 件 / 全 ${todos.length} 件`;
+    clearBtn.hidden = !todos.some(t => t.done);
+  }
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    todos.unshift({ id: Date.now() + Math.random(), text, done: false });
+    input.value = "";
+    save();
+    render();
+  });
+
+  filters.addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    filter = b.dataset.filter;
+    for (const x of filters.children) x.classList.toggle("on", x === b);
+    render();
+  });
+
+  clearBtn.addEventListener("click", () => {
+    todos = todos.filter(t => !t.done);
+    save();
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
