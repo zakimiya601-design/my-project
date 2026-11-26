@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>やる事カレンダー</title>
+<!-- ホーム画面用の入口。開くと claude.ai のやる事カレンダーへ移動する。
+     Safari で開くように、manifest と apple-mobile-web-app-capable はあえて付けない
+     （claude.ai のログイン状態をそのまま使うため）。 -->
+<meta name="apple-mobile-web-app-title" content="カレンダー">
+<meta name="theme-color" content="#141413">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --bg: #141413; --text: #f2f2ee; --sub: #9a9a93; --accent: #6cbf93; color-scheme: dark; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 420px; margin: 0 auto; padding: calc(48px + env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 48px max(20px, env(safe-area-inset-left));
+    display: flex; flex-direction: column; gap: 16px; }
+  img { width: 96px; height: 96px; border-radius: 22px; }
+  h1 { font-size: 22px; margin: 0; }
+  p, ol { color: var(--sub); font-size: 15px; line-height: 1.7; margin: 0; }
+  ol { padding-left: 1.3em; }
+  b { color: var(--text); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <img src="apple-touch-icon.png" alt="">
+  <h1>やる事カレンダー</h1>
+  <div id="setup" hidden>
+    <ol>
+      <li>Safari 下の <b>共有ボタン</b>（四角から矢印）をタップ</li>
+      <li><b>「ホーム画面に追加」</b>を選ぶ</li>
+      <li>「Webアプリとして開く」がオンなら<b>オフ</b>にして「追加」</li>
+    </ol>
+    <p style="margin-top:12px">追加したアイコンを開くと、やる事カレンダーへ移動します。</p>
+  </div>
+  <p id="go" hidden>移動しています… 開かない場合は <a id="link">こちら</a></p>
+</main>
+<script>
+  const TARGET = "https://claude.ai/artifact/4yx2x4DMLfYEiPpJwj8LnV";
+  document.getElementById("link").href = TARGET;
+  if (location.hash === "#setup") {
+    // ホーム画面に保存されるURLから #setup を外しておく（保存したアイコンは直接移動する）
+    history.replaceState(null, "", location.pathname);
+    document.getElementById("setup").hidden = false;
+  } else {
+    document.getElementById("go").hidden = false;
+    location.replace(TARGET);
+  }
+</script>
+</body>
+</html>
