@@ -33,3 +33,12 @@ https://claude.ai/artifact/4yx2x4DMLfYEiPpJwj8LnV
 ```
 python3 tools/build-artifact.py planner.html
 ```
+
+## iPhone のホーム画面に置く
+
+claude.ai のページをそのままホーム画面に追加すると、アイコンは Claude のものになります。
+黒いカレンダーのアイコンで置きたいときは、入口ページ `open.html` を使います（このリポジトリを GitHub Pages で公開している場合）。
+
+1. Safari で `https://<ユーザー名>.github.io/my-project/open.html#setup` を開く
+2. 共有ボタン →「ホーム画面に追加」（「Webアプリとして開く」はオフ）
+3. 追加したアイコンを開くと、claude.ai のやる事カレンダーへ移動します
