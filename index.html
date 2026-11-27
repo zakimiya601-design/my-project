@@ -112,7 +112,16 @@
   input[type="text"] { flex: 1 1 200px; }
   input[type="time"] { flex: 0 1 130px; font-variant-numeric: tabular-nums; }
   input:focus { border-color: var(--accent); }
-  .times { align-items: center; color: var(--sub); font-size: 14px; }
+  .times { align-items: center; color: var(--sub); font-size: 14px; flex-wrap: nowrap; }
+  .period { display: flex; flex-direction: column; gap: 8px; }
+  .lbl { flex: none; width: 2.5em; font-size: 13px; color: var(--sub); }
+  input[type="date"] {
+    font: inherit; font-size: 16px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); color: var(--text); outline: none; min-width: 0; flex: 1 1 150px; font-variant-numeric: tabular-nums;
+  }
+  input[type="date"]:focus { border-color: var(--accent); }
+  .hint { margin: 0; font-size: 12px; color: var(--sub); }
+  .range { display: block; font-size: 12px; color: var(--accent); margin-top: 3px; font-variant-numeric: tabular-nums; }
   .add { background: var(--accent); color: #fff; font-weight: 600; padding: 0 18px; border-radius: 12px; min-height: 44px; }
 
   section h3 { font-size: 13px; color: var(--sub); font-weight: 600; letter-spacing: 0.06em; margin: 0 0 8px; }
@@ -182,11 +191,18 @@
       <input type="text" id="input" placeholder="やる事を入力" autocomplete="off" maxlength="200">
       <button type="submit" class="add">追加</button>
     </div>
-    <div class="row times" id="times" hidden>
-      <input type="time" id="start" aria-label="開始時刻">
-      <span>〜</span>
-      <input type="time" id="end" aria-label="終了時刻">
-      <span>（空欄なら終日）</span>
+    <div class="period" id="times" hidden>
+      <div class="row times">
+        <span class="lbl">開始</span>
+        <input type="date" id="sdate" aria-label="開始日">
+        <input type="time" id="start" aria-label="開始時刻">
+      </div>
+      <div class="row times">
+        <span class="lbl">終了</span>
+        <input type="date" id="edate" aria-label="終了日">
+        <input type="time" id="end" aria-label="終了時刻">
+      </div>
+      <p class="hint">時刻が空欄なら終日。日付をまたぐときは終了日を選んでください。</p>
     </div>
     <div class="row" id="extra" hidden>
       <input type="text" id="place" placeholder="場所（任意）" autocomplete="off" maxlength="200">
@@ -271,6 +287,11 @@
   const $ = id => document.getElementById(id);
 
   function byDate(date) { return Object.entries(items).filter(([, v]) => v.date === date); }
+  // 予定の最終日（古いデータは endDate が無いので開始日と同じ）
+  const lastDay = v => (v.endDate && v.endDate > v.date) ? v.endDate : v.date;
+  const eventsOn = s => Object.entries(items).filter(([, v]) => v.kind === "event" && v.date <= s && s <= lastDay(v));
+  const md = s => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
+  const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
 
   function renderCalendar() {
     $("month").textContent = `${viewY}年${viewM + 1}月`;
@@ -285,7 +306,10 @@
     // 日付ごとの印を先に集計
     const ev = new Set(), td = new Set();
     for (const v of Object.values(items)) {
-      if (v.kind === "event") ev.add(v.date);
+      if (v.kind === "event") {
+        // 期間のある予定は、最終日までの各日に印を付ける（念のため最大1年分）
+        for (let s = v.date, n = 0; s <= lastDay(v) && n < 366; s = addDays(s, 1), n++) ev.add(s);
+      }
       else if (!v.done) td.add(v.date);
     }
     const first = new Date(viewY, viewM, 1);
@@ -350,11 +374,15 @@
     };
     const title = field("input", "text", { type: "text", maxLength: 200, placeholder: "予定" });
     title.setAttribute("aria-label", "予定");
-    const times = document.createElement("div"); times.className = "row times";
-    const st = field("input", "time", { type: "time" }); st.setAttribute("aria-label", "開始時刻");
-    const en = field("input", "end", { type: "time" }); en.setAttribute("aria-label", "終了時刻");
-    const tilde = document.createElement("span"); tilde.textContent = "〜";
-    times.append(st, tilde, en);
+    const times = document.createElement("div"); times.className = "period";
+    const mkRow = (lab, dKey, tKey) => {
+      const r = document.createElement("div"); r.className = "row times";
+      const l = document.createElement("span"); l.className = "lbl"; l.textContent = lab;
+      const dd = field("input", dKey, { type: "date" }); dd.setAttribute("aria-label", lab + "日");
+      const tt = field("input", tKey, { type: "time" }); tt.setAttribute("aria-label", lab + "時刻");
+      r.append(l, dd, tt); return r;
+    };
+    times.append(mkRow("開始", "date", "time"), mkRow("終了", "endDate", "end"));
     const place = field("input", "place", { type: "text", maxLength: 200, placeholder: "場所（任意）" });
     place.setAttribute("aria-label", "場所");
     const memo = field("textarea", "memo", { maxLength: 2000, rows: 3, placeholder: "メモ（任意）" });
@@ -366,7 +394,9 @@
     save.onclick = () => {
       const d = editing; if (!d.text.trim() || !items[id]) { editing = null; render(); return; }
       editing = null;
-      patch(id, { text: d.text.trim(), time: d.time, end: d.time ? d.end : "", place: d.place.trim(), memo: d.memo.trim() });
+      const date = d.date || items[id].date;
+      const endDate = d.endDate && d.endDate > date ? d.endDate : date;
+      patch(id, { text: d.text.trim(), date, endDate, time: d.time, end: d.end, place: d.place.trim(), memo: d.memo.trim() });
     };
     actions.append(cancel, save);
     li.append(title, times, place, memo, actions);
@@ -376,8 +406,9 @@
   function renderDay() {
     $("dayTitle").textContent = label(selected) + (selected === today ? " · 今日" : "");
     const list = byDate(selected);
-    const events = list.filter(([, v]) => v.kind === "event")
-      .sort((a, b) => (a[1].time || "").localeCompare(b[1].time || ""));
+    // 前の日から続いている予定は先頭、それ以外は開始時刻順
+    const sortKey = v => v.date < selected ? "" : (v.time || "");
+    const events = eventsOn(selected).sort((a, b) => sortKey(a[1]).localeCompare(sortKey(b[1])));
     const todos = list.filter(([, v]) => v.kind !== "event")
       .sort((a, b) => (a[1].done - b[1].done) || (b[1].createdAt - a[1].createdAt));
     const left = todos.filter(([, v]) => !v.done).length;
@@ -388,12 +419,22 @@
       if (editing && editing.id === id) { evUl.appendChild(editRow(id)); continue; }
       const li = document.createElement("li"); li.className = "ev";
       const tm = document.createElement("span"); tm.className = "time";
-      tm.textContent = e.time ? (e.end ? `${e.time}–${e.end}` : e.time) : "終日";
+      const multi = lastDay(e) > e.date;
+      if (!multi) tm.textContent = e.time ? (e.end ? `${e.time}–${e.end}` : e.time) : "終日";
+      else if (selected === e.date) tm.textContent = e.time ? `${e.time}〜` : "終日";
+      else if (selected === lastDay(e)) tm.textContent = e.end ? `〜${e.end}` : "終日";
+      else tm.textContent = "終日";
       const text = document.createElement("span"); text.className = "text"; text.textContent = e.text;
+      if (multi) {
+        const rg = document.createElement("span"); rg.className = "range";
+        const total = dayDiff(e.date, lastDay(e)) + 1, nth = dayDiff(e.date, selected) + 1;
+        rg.textContent = `${md(e.date)}${e.time ? " " + e.time : ""} 〜 ${md(lastDay(e))}${e.end ? " " + e.end : ""}（${nth}/${total}日目）`;
+        text.appendChild(rg);
+      }
       if (e.place) { const pl = document.createElement("span"); pl.className = "place"; pl.textContent = e.place; text.appendChild(pl); }
       if (e.memo) { const me = document.createElement("span"); me.className = "memo"; me.textContent = e.memo; text.appendChild(me); }
       const ed = document.createElement("button"); ed.className = "mini"; ed.textContent = "編集";
-      ed.onclick = () => { editing = { id, text: e.text, time: e.time || "", end: e.end || "", place: e.place || "", memo: e.memo || "" }; render(); };
+      ed.onclick = () => { editing = { id, text: e.text, date: e.date, endDate: lastDay(e), time: e.time || "", end: e.end || "", place: e.place || "", memo: e.memo || "" }; render(); };
       li.append(tm, text, ed, delBtn(id));
       evUl.appendChild(li);
     }
@@ -415,7 +456,14 @@
     $("clear").hidden = !todos.some(([, v]) => v.done);
   }
 
-  function render() { renderCalendar(); renderDay(); }
+  // 追加フォームの開始日は、選んでいる日に合わせる
+  function syncForm() {
+    if ($("sdate").dataset.for !== selected) {
+      $("sdate").value = selected; $("sdate").dataset.for = selected; $("edate").value = selected;
+    }
+  }
+
+  function render() { renderCalendar(); renderDay(); syncForm(); }
 
   // ---------- 操作 ----------
   $("prev").onclick = () => { viewM--; if (viewM < 0) { viewM = 11; viewY--; } render(); };
@@ -437,11 +485,21 @@
     const text = $("input").value.trim();
     if (!text) return;
     const start = kind === "event" ? $("start").value : "";
-    const end = kind === "event" && start ? $("end").value : "";
+    const end = kind === "event" ? $("end").value : "";
+    const date = kind === "event" && $("sdate").value ? $("sdate").value : selected;
+    const ed = kind === "event" ? $("edate").value : "";
+    const endDate = ed && ed > date ? ed : date;
     const place = kind === "event" ? $("place").value.trim() : "";
     const memo = kind === "event" ? $("memo").value.trim() : "";
-    put(newId(), { date: selected, kind, text, done: false, time: start, end, place, memo, createdAt: Date.now() });
+    const data = { date, kind, text, done: false, time: start, end, place, memo, createdAt: Date.now() };
+    if (kind === "event") data.endDate = endDate;
+    put(newId(), data);
     $("input").value = ""; $("start").value = ""; $("end").value = ""; $("place").value = ""; $("memo").value = "";
+    $("sdate").dataset.for = ""; syncForm();
+  });
+
+  $("sdate").addEventListener("change", () => {
+    if (!$("edate").value || $("edate").value < $("sdate").value) $("edate").value = $("sdate").value;
   });
 
   $("clear").onclick = () => {
