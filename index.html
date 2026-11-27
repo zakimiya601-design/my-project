@@ -103,6 +103,12 @@
     font: inherit; font-size: 16px; padding: 11px 13px; border: 1px solid var(--line);
     border-radius: 12px; background: var(--card); color: var(--text); outline: none; min-width: 0;
   }
+  textarea {
+    font: inherit; font-size: 16px; padding: 11px 13px; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--card); color: var(--text); outline: none;
+    width: 100%; min-height: 64px; resize: vertical; line-height: 1.5;
+  }
+  textarea:focus { border-color: var(--accent); }
   input[type="text"] { flex: 1 1 200px; }
   input[type="time"] { flex: 0 1 130px; font-variant-numeric: tabular-nums; }
   input:focus { border-color: var(--accent); }
@@ -121,6 +127,16 @@
     transform: rotate(45deg) translate(-1px, -1px);
   }
   .text { flex: 1; min-width: 0; font-size: 16px; word-break: break-word; }
+  li.ev { align-items: flex-start; }
+  li.ev .time { padding-top: 2px; }
+  .place, .memo { display: block; font-size: 13px; color: var(--sub); margin-top: 4px; line-height: 1.5; }
+  .place::before { content: "場所　"; color: var(--accent); font-weight: 600; }
+  .memo { white-space: pre-wrap; }
+  .edit { flex-direction: column; align-items: stretch; gap: 8px; background: var(--bg); }
+  .edit > input[type="text"] { flex: none; }
+  .edit .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .edit .save { background: var(--accent); color: #fff; font-weight: 600; padding: 8px 16px; border-radius: 10px; }
+  .edit .cancel { color: var(--sub); padding: 8px 12px; }
   .from { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
   li.done .text { color: var(--sub); text-decoration: line-through; }
   .mini { font-size: 12px; color: var(--sub); padding: 5px 8px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); white-space: nowrap; }
@@ -172,6 +188,10 @@
       <input type="time" id="end" aria-label="終了時刻">
       <span>（空欄なら終日）</span>
     </div>
+    <div class="row" id="extra" hidden>
+      <input type="text" id="place" placeholder="場所（任意）" autocomplete="off" maxlength="200">
+      <textarea id="memo" placeholder="メモ（任意）" maxlength="2000" rows="2"></textarea>
+    </div>
   </form>
 
   <section id="carrySec" hidden>
@@ -208,6 +228,7 @@
   let selected = today;
   let viewY = new Date().getFullYear(), viewM = new Date().getMonth();
   let kind = "todo";
+  let editing = null; // 編集中の予定 {id, text, time, end, place, memo}
   let items = {}; // id -> {date, kind, text, done, time, end, createdAt}
 
   // ---------- 保存先：claude.ai 上ではデータベース、それ以外はブラウザ ----------
@@ -318,6 +339,40 @@
     return li;
   }
 
+  // 予定の編集（入力中の内容は editing に持つので、同期で再描画されても消えない）
+  function editRow(id) {
+    const li = document.createElement("li"); li.className = "edit";
+    const field = (tag, key, attrs) => {
+      const el = document.createElement(tag);
+      Object.assign(el, attrs); el.value = editing[key];
+      el.oninput = () => { editing[key] = el.value; };
+      return el;
+    };
+    const title = field("input", "text", { type: "text", maxLength: 200, placeholder: "予定" });
+    title.setAttribute("aria-label", "予定");
+    const times = document.createElement("div"); times.className = "row times";
+    const st = field("input", "time", { type: "time" }); st.setAttribute("aria-label", "開始時刻");
+    const en = field("input", "end", { type: "time" }); en.setAttribute("aria-label", "終了時刻");
+    const tilde = document.createElement("span"); tilde.textContent = "〜";
+    times.append(st, tilde, en);
+    const place = field("input", "place", { type: "text", maxLength: 200, placeholder: "場所（任意）" });
+    place.setAttribute("aria-label", "場所");
+    const memo = field("textarea", "memo", { maxLength: 2000, rows: 3, placeholder: "メモ（任意）" });
+    memo.setAttribute("aria-label", "メモ");
+    const actions = document.createElement("div"); actions.className = "actions";
+    const cancel = document.createElement("button"); cancel.className = "cancel"; cancel.textContent = "キャンセル";
+    cancel.onclick = () => { editing = null; render(); };
+    const save = document.createElement("button"); save.className = "save"; save.textContent = "保存";
+    save.onclick = () => {
+      const d = editing; if (!d.text.trim() || !items[id]) { editing = null; render(); return; }
+      editing = null;
+      patch(id, { text: d.text.trim(), time: d.time, end: d.time ? d.end : "", place: d.place.trim(), memo: d.memo.trim() });
+    };
+    actions.append(cancel, save);
+    li.append(title, times, place, memo, actions);
+    return li;
+  }
+
   function renderDay() {
     $("dayTitle").textContent = label(selected) + (selected === today ? " · 今日" : "");
     const list = byDate(selected);
@@ -330,11 +385,16 @@
 
     const evUl = $("events"); evUl.innerHTML = "";
     for (const [id, e] of events) {
-      const li = document.createElement("li");
+      if (editing && editing.id === id) { evUl.appendChild(editRow(id)); continue; }
+      const li = document.createElement("li"); li.className = "ev";
       const tm = document.createElement("span"); tm.className = "time";
       tm.textContent = e.time ? (e.end ? `${e.time}–${e.end}` : e.time) : "終日";
       const text = document.createElement("span"); text.className = "text"; text.textContent = e.text;
-      li.append(tm, text, delBtn(id));
+      if (e.place) { const pl = document.createElement("span"); pl.className = "place"; pl.textContent = e.place; text.appendChild(pl); }
+      if (e.memo) { const me = document.createElement("span"); me.className = "memo"; me.textContent = e.memo; text.appendChild(me); }
+      const ed = document.createElement("button"); ed.className = "mini"; ed.textContent = "編集";
+      ed.onclick = () => { editing = { id, text: e.text, time: e.time || "", end: e.end || "", place: e.place || "", memo: e.memo || "" }; render(); };
+      li.append(tm, text, ed, delBtn(id));
       evUl.appendChild(li);
     }
     evUl.hidden = !events.length; $("eventsEmpty").hidden = !!events.length;
@@ -367,6 +427,7 @@
     kind = b.dataset.kind;
     for (const x of $("seg").children) x.classList.toggle("on", x === b);
     $("times").hidden = kind !== "event";
+    $("extra").hidden = kind !== "event";
     $("input").placeholder = kind === "event" ? "予定を入力（例：歯医者）" : "やる事を入力";
     $("input").focus();
   });
@@ -377,8 +438,10 @@
     if (!text) return;
     const start = kind === "event" ? $("start").value : "";
     const end = kind === "event" && start ? $("end").value : "";
-    put(newId(), { date: selected, kind, text, done: false, time: start, end, createdAt: Date.now() });
-    $("input").value = ""; $("start").value = ""; $("end").value = "";
+    const place = kind === "event" ? $("place").value.trim() : "";
+    const memo = kind === "event" ? $("memo").value.trim() : "";
+    put(newId(), { date: selected, kind, text, done: false, time: start, end, place, memo, createdAt: Date.now() });
+    $("input").value = ""; $("start").value = ""; $("end").value = ""; $("place").value = ""; $("memo").value = "";
   });
 
   $("clear").onclick = () => {
